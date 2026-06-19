@@ -1,0 +1,89 @@
+[project]
+name = "pydantic-resolve"
+version = "5.10.0"
+description = "Entity-First Architecture framework for Python: define business entities, declare relationships, and let the framework assemble your data."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "tangkikodo", email = "allmonday@126.com" },
+]
+keywords = ["pydantic", "clean-architecture", "entity-first", "dataloader", "resolver"]
+dependencies = [
+    "aiodataloader >= 0.4.0,<0.5.0",
+    "graphql-core >= 3.2,<4.0",
+    "pydantic >= 2.0.0,<3.0.0",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Framework :: FastAPI",
+    "Framework :: Pydantic",
+]
+
+[project.urls]
+Repository = "https://github.com/allmonday/pydantic_resolve"
+
+
+[project.optional-dependencies]
+mcp = [
+    "fastmcp >= 3.0.0"
+]
+sqlalchemy = [
+    "sqlalchemy[asyncio]>=2.0.7,<3.0.0"
+]
+tortoise = [
+    "tortoise-orm>=1.1.7,<2.0.0"
+]
+django = [
+    "Django>=4.2,<6.0"
+]
+dev = [
+    "fastmcp >= 3.0.0",
+    "tox>=4.4.6,<5.0.0",
+    "pytest>=7.2.2,<8.0.0",
+    "pytest-benchmark[histogram]>=5.0.1",
+    "pytest-cov>=4.0.0,<5.0.0",
+    "coverage>=7.2.1,<8.0.0",
+    "aiosqlite>=0.18.0,<0.19.0",
+    "pydantic>=2.12.0,<3.0.0",
+    "sqlalchemy[asyncio]>=2.0.7,<3.0.0",
+    "tortoise-orm>=1.1.7,<2.0.0",
+    "Django>=4.2,<6.0",
+    "pytest-asyncio>=0.21.0,<0.22.0",
+    "mkdocs-material>=9,<10",
+    "mkdocs-static-i18n[material]==1.2.0",
+    "psutil>=7.1.0,<8.0.0",
+    "ruff>=0.14.5,<0.15.0",
+    "fastapi>=0.133.0",
+    "uvicorn>=0.41.0"
+]
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pydantic_resolve"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error",
+    "ignore::ResourceWarning",
+]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "asyncmy>=0.2.11",
+]

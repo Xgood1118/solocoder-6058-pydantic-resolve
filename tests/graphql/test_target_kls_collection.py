@@ -1,0 +1,106 @@
+"""
+Test that Relationship.target_kls types are collected and generated in GraphQL schema.
+"""
+
+from pydantic import BaseModel
+from pydantic_resolve import Relationship, Entity, ErDiagram
+from pydantic_resolve.graphql import SchemaBuilder
+
+
+# Define Pydantic models (NOT registered in ErDiagram)
+class AddressInfo(BaseModel):
+    """Address type - NOT registered as Entity"""
+    street: str
+    city: str
+    zip_code: str
+
+
+class ProfileInfo(BaseModel):
+    """Profile type - NOT registered as Entity, has nested AddressInfo"""
+    bio: str
+    address: AddressInfo
+
+
+# Define Entity with Relationship to unregistered types
+class UserEntity(BaseModel):
+    """User entity - registered in ErDiagram"""
+    id: int
+    name: str
+    profile_id: int
+
+
+class PostEntity(BaseModel):
+    """Post entity - registered in ErDiagram"""
+    id: int
+    title: str
+    author_id: int
+
+
+class TestTargetKlsCollection:
+    """Test that target_kls types are collected for schema generation"""
+
+    def test_relationship_target_kls_collected(self):
+        """Test that Relationship.target_kls type is collected even if not registered"""
+        diagram = ErDiagram(entities=[
+            Entity(
+                kls=UserEntity,
+                relationships=[
+                    Relationship(
+                        fk='profile_id',
+                        target=ProfileInfo,  # Not registered!
+                        name='profile'
+                    )
+                ]
+            )
+        ])
+
+        builder = SchemaBuilder(diagram)
+        schema = builder.build_schema()
+
+        # Verify ProfileInfo type is generated
+        assert 'type ProfileInfo' in schema
+        # Verify nested AddressInfo is also generated (recursive collection)
+        assert 'type AddressInfo' in schema
+
+    def test_list_target_kls_collected(self):
+        """Test that list[TargetType] is correctly extracted"""
+        diagram = ErDiagram(entities=[
+            Entity(
+                kls=UserEntity,
+                relationships=[
+                    Relationship(
+                        fk='id',
+                        target=list[PostEntity],  # Not registered!
+                        name='posts'
+                    )
+                ]
+            )
+        ])
+
+        builder = SchemaBuilder(diagram)
+        schema = builder.build_schema()
+
+        # Verify PostEntity type is generated
+        assert 'type PostEntity' in schema
+
+    def test_registered_entity_not_duplicated(self):
+        """Test that already registered entities are not duplicated"""
+        diagram = ErDiagram(entities=[
+            Entity(kls=UserEntity, relationships=[]),
+            Entity(
+                kls=PostEntity,
+                relationships=[
+                    Relationship(
+                        fk='author_id',
+                        target=UserEntity,  # Already registered
+                        name='author'
+                    )
+                ]
+            )
+        ])
+
+        builder = SchemaBuilder(diagram)
+        schema = builder.build_schema()
+
+        # Count UserEntity occurrences (should be exactly 1)
+        assert schema.count('type UserEntity') == 1

@@ -1,0 +1,151 @@
+site_name: Pydantic-resolve
+site_description: "Clean Architecture for Python — define business entities, declare relationships, let the framework assemble your data."
+site_url: https://allmonday.github.io/pydantic-resolve
+site_author: tangkikodo
+theme:
+  name: material
+  custom_dir: overrides
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: light blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: light blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.indexes
+    - navigation.tracking
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - header.autohide
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.links.target_blank
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+repo_name: allmonday/pydantic-resolve
+repo_url: https://github.com/allmonday/pydantic-resolve
+edit_uri: ""
+
+nav:
+  - Guide:
+    - Overview: ./index.md
+    - Quick Start: ./quick_start.md
+    - Core API: ./core_api.md
+    - Post Processing: ./post_processing.md
+    - Cross-Layer Data Flow: ./cross_layer_data_flow.md
+    - ERD and AutoLoad: ./erd_and_autoload.md
+  - Advanced:
+    - DataLoader Deep Dive: ./dataloader_deep_dive.md
+    - ERD with DefineSubset: ./erd_define_subset.md
+    - ORM Integration: ./orm_integration.md
+    - FastAPI Integration: ./fastapi_integration.md
+    - GraphQL Guide: ./graphql_guide.md
+    - MCP Service: ./mcp_service.md
+    - UseCase MCP Service: ./use_case_mcp_service.md
+    - Voyager Visualization: ./voyager_guide.md
+  - API Reference:
+    - Resolver: ./api_resolver.md
+    - DataLoader Utilities: ./api_dataloader.md
+    - Cross-Layer Annotations: ./api_cross_layer.md
+    - ER Diagram: ./api_erd.md
+    - DefineSubset: ./api_subset.md
+    - GraphQL API: ./api_graphql.md
+    - MCP API: ./api_mcp.md
+    - UseCase MCP API: ./api_use_case_mcp.md
+  - Reference:
+    - Migration Guide: ./migration.md
+    - Changelog: ./changelog.md
+    - Benchmark: ./benchmark.md
+  - Articles:
+    - "Clean Architecture for Python": ./architecture_entity_first.md
+    - "Reframing Data Assembly: pydantic-resolve vs SQLAlchemy ORM": ./blog_pydantic_resolve_vs_orm.md
+    - "REST vs GraphQL and the Missing Layer: ER Diagram": ./blog_rest_graphql_and_er_diagram.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.superfences
+
+plugins:
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+          link: "/"
+        - locale: zh
+          name: 中文
+          build: true
+          link: "/zh/"
+          nav_translations:
+            Guide: "指南"
+            Advanced: "进阶"
+            Articles: "文章"
+            API Reference: "API 参考"
+            Reference: "参考"
+            Overview: "总览"
+            Quick Start: "快速开始"
+            Core API: "核心 API"
+            Post Processing: "后处理"
+            Cross-Layer Data Flow: "跨层数据流"
+            ERD and AutoLoad: "ERD 与 AutoLoad"
+            DataLoader Deep Dive: "DataLoader 深入"
+            ERD with DefineSubset: "ERD 与 DefineSubset"
+            ORM Integration: "ORM 集成"
+            FastAPI Integration: "FastAPI 集成"
+            GraphQL Guide: "GraphQL 指南"
+            MCP Service: "MCP 服务"
+            UseCase MCP Service: "UseCase MCP 服务"
+            Voyager Visualization: "Voyager 可视化"
+            Resolver: "Resolver"
+            DataLoader Utilities: "DataLoader 工具"
+            Cross-Layer Annotations: "跨层注解"
+            ER Diagram: "ER 图"
+            DefineSubset: "DefineSubset"
+            GraphQL API: "GraphQL API"
+            MCP API: "MCP API"
+            UseCase MCP API: "UseCase MCP API"
+            Change log: "变更记录"
+            Migration Guide: "迁移指南"
+            "Clean Architecture for Python": "Python 的整洁架构实现"
+            "Reframing Data Assembly: pydantic-resolve vs SQLAlchemy ORM": "重塑数据构建的开发体验：pydantic-resolve vs SQLAlchemy ORM 查询对比"
+            "REST vs GraphQL and the Missing Layer: ER Diagram": "REST 与 GraphQL 之争，漏掉了关键的一层"
+
+extra:
+  analytics:
+    provider: google
+    property: G-9P2E638G4H
+
+extra_css:
+  - stylesheets/extra.css
