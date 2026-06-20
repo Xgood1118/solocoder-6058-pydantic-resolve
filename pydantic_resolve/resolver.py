@@ -1,5 +1,6 @@
 import os
 import asyncio
+from collections import defaultdict
 from dataclasses import dataclass
 from inspect import iscoroutine
 from typing import TypeVar, Callable, Any
@@ -13,6 +14,7 @@ import pydantic_resolve.utils.conversion as conversion_util
 import pydantic_resolve.utils.class_util as class_util
 import pydantic_resolve.constant as const
 import pydantic_resolve.utils.profile as profile_util
+from pydantic_resolve.utils.dataloader import LoaderCache, LoaderMetrics
 
 # Two-level cache: id(resolver_class) -> {root_class -> metadata}
 # This isolates caches for different resolver classes (created via config_resolver)
@@ -74,6 +76,9 @@ class Resolver:
             annotation: type[T] | None=None,
             split_loader_by_type=False,
             resolved_hooks: list[Callable] | None = None,
+            loader_cache: LoaderCache | None = None,
+            loader_cache_ttl: int = 60,
+            loader_metrics: LoaderMetrics | None = None,
             ):
 
         self.debug = debug or os.getenv("PYDANTIC_RESOLVE_DEBUG", "false").lower() == "true"
@@ -93,6 +98,11 @@ class Resolver:
             self.loader_instances = loader_instances
         else:
             self.loader_instances = {}
+
+        # DataLoader cache: per Resolver instance, not shared across instances
+        # If loader_cache is provided, use it; otherwise auto-create with TTL
+        self.loader_cache = loader_cache if loader_cache is not None else LoaderCache(ttl=loader_cache_ttl)
+        self.loader_metrics = loader_metrics
 
         # only use with pydantic v2
         # for scenario of upgrading from pydantic v1
@@ -486,6 +496,58 @@ class Resolver:
             for bn in add_nodes:
                 self._add_values_into_collectors(bn)
 
+            if depth > 0:
+                self._merge_collectors_from_parallel_branches(levels[depth], node_to_bn)
+
+    def _merge_collectors_from_parallel_branches(
+        self, current_level: list[_Node], node_to_bn: dict[int, _Node]
+    ) -> None:
+        """Merge collector values from parallel sibling branches into parent collectors.
+
+        When multiple children of the same parent have collectors with the same alias,
+        merge their values according to the collector's merge_mode. The first child's
+        collector becomes the primary, and subsequent children's collectors are merged
+        into it in encounter order.
+        """
+        parent_to_children: dict[int, list[_Node]] = defaultdict(list)
+        for bn in current_level:
+            if bn.parent is not None:
+                parent_to_children[id(bn.parent)].append(bn)
+
+        for parent_id, children in parent_to_children.items():
+            if len(children) < 2:
+                continue
+
+            parent_bn = node_to_bn.get(parent_id)
+            if parent_bn is None:
+                continue
+
+            parent_alias_map = self.object_level_collect_alias_map_store.get(parent_id, {})
+            if not parent_alias_map:
+                continue
+
+            alias_to_collectors: dict[str, list] = defaultdict(list)
+            for child in children:
+                child_alias_map = self.object_level_collect_alias_map_store.get(id(child.node), {})
+                for alias, sign_map in child_alias_map.items():
+                    for collector in sign_map.values():
+                        alias_to_collectors[alias].append(collector)
+
+            for alias, child_collectors in alias_to_collectors.items():
+                if len(child_collectors) < 2:
+                    continue
+
+                if alias not in parent_alias_map:
+                    continue
+
+                parent_sign_map = parent_alias_map[alias]
+                if not parent_sign_map:
+                    continue
+
+                primary_collector = next(iter(parent_sign_map.values()))
+                for child_collector in child_collectors:
+                    primary_collector.merge(child_collector)
+
     # ──────────────────────────────────────────────────────────
     # BFS traversal entry point
     # ──────────────────────────────────────────────────────────
@@ -553,7 +615,9 @@ class Resolver:
             self.loader_instances,
             self.metadata,
             self.context,
-            split_loader_by_type=self.split_loader_by_type)
+            split_loader_by_type=self.split_loader_by_type,
+            loader_cache=self.loader_cache,
+            loader_metrics=self.loader_metrics)
 
         has_context = analysis.has_context(self.metadata)
         if has_context and self.context is None:

@@ -5,6 +5,7 @@ import pydantic_resolve.utils.class_util as class_util
 import pydantic_resolve.utils.params as params_util
 from pydantic_resolve.analysis import LoaderQueryMeta, MappedMetaType
 from pydantic_resolve.exceptions import LoaderFieldNotProvidedError, LoaderContextNotProvidedError
+from pydantic_resolve.utils.dataloader import LoaderCache, LoaderMetrics, CachedDataLoader
 
 from aiodataloader import DataLoader
 from pydantic import BaseModel
@@ -60,7 +61,9 @@ def _create_loader_instance(
     loader: LoaderType,
     loader_params: dict,
     global_loader_param: dict,
-    context: dict | None = None
+    context: dict | None = None,
+    loader_cache: LoaderCache | None = None,
+    loader_metrics: LoaderMetrics | None = None,
 ) -> DataLoader:
     """
     Create a loader instance.
@@ -68,6 +71,7 @@ def _create_loader_instance(
     1. is class?
         - validate params
         - set context if required
+        - attach cache and metrics for CachedDataLoader subclasses
     2. is func
     """
     loader_kls = loader['kls']
@@ -96,6 +100,13 @@ def _create_loader_instance(
         # Set _context if loader requires it and context is provided
         if loader.get('requires_context', False) and context is not None:
             setattr(loader_instance, '_context', context)
+
+        # Attach cache and metrics if loader is a CachedDataLoader
+        if isinstance(loader_instance, CachedDataLoader):
+            if loader_cache is not None:
+                loader_instance._loader_cache = loader_cache
+            if loader_metrics is not None:
+                loader_instance._metrics = loader_metrics
 
         return loader_instance
     else:
@@ -133,7 +144,9 @@ def validate_and_create_loader_instance(
     loader_instances: dict,
     metadata: MappedMetaType,
     context: dict | None = None,
-    split_loader_by_type: bool = False
+    split_loader_by_type: bool = False,
+    loader_cache: LoaderCache | None = None,
+    loader_metrics: LoaderMetrics | None = None,
 ) -> dict[str, DataLoader] | dict[str, dict[tuple[type, ...], DataLoader]]:
     """
     Validate and create loader instances.
@@ -236,9 +249,17 @@ def validate_and_create_loader_instance(
         if key not in cache[path]:
             loader_kls = loader['kls']
             if loader_instances.get(loader_kls):
-                cache[path][key] = loader_instances[loader_kls]
+                inst = loader_instances[loader_kls]
+                if isinstance(inst, CachedDataLoader):
+                    if loader_cache is not None:
+                        inst._loader_cache = loader_cache
+                    if loader_metrics is not None:
+                        inst._metrics = loader_metrics
+                cache[path][key] = inst
             else:
-                cache[path][key] = _create_loader_instance(loader, loader_params, global_loader_param, context)
+                cache[path][key] = _create_loader_instance(
+                    loader, loader_params, global_loader_param, context,
+                    loader_cache=loader_cache, loader_metrics=loader_metrics)
 
         # Phase 2: collect type_keys for _query_meta generation
         if loader['request_type'] is not None:

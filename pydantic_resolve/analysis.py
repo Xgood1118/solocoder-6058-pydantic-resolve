@@ -801,7 +801,10 @@ def _clone_collector(collector):
     new.alias = collector.alias
     if hasattr(collector, 'flat'):
         new.flat = collector.flat
+    if hasattr(collector, 'merge_mode'):
+        new.merge_mode = collector.merge_mode
     new.val = []
+    new._source_collectors = []
     return new
 
 

@@ -37,7 +37,15 @@ Example:
 """
 
 from pydantic_resolve.graphql.mcp.server import create_mcp_server
-from pydantic_resolve.graphql.mcp.types.app_config import AppConfig
+from pydantic_resolve.graphql.mcp.types.app_config import AppConfig, YamlAppConfig, load_app_configs_from_yaml
 from pydantic_resolve.graphql.mcp.types.errors import MCPErrors
+from pydantic_resolve.graphql.mcp.managers.multi_app_manager import MultiAppManager
 
-__all__ = ["create_mcp_server", "AppConfig", "MCPErrors"]
+__all__ = [
+    "create_mcp_server",
+    "AppConfig",
+    "YamlAppConfig",
+    "load_app_configs_from_yaml",
+    "MCPErrors",
+    "MultiAppManager",
+]

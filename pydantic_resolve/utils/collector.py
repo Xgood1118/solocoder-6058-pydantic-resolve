@@ -1,8 +1,26 @@
 import abc
 from dataclasses import dataclass
 from typing import Any, Iterator
+from enum import Enum
 import pydantic_resolve.constant as const
 from pydantic_resolve.utils.field_metadata import iter_fields_with_marker
+
+
+class MergeMode(str, Enum):
+    """Merge strategies for collectors from parallel branches.
+
+    Attributes:
+        CONCAT: Default. Concatenate results in encounter order.
+        UNION: Return unique values from all branches (preserves order).
+        INTERSECT: Return values present in all branches.
+        FIRST: Return only values from the first encountered branch.
+        LAST: Return only values from the last encountered branch.
+    """
+    CONCAT = "concat"
+    UNION = "union"
+    INTERSECT = "intersect"
+    FIRST = "first"
+    LAST = "last"
 
 @dataclass
 class SendToInfo:
@@ -58,12 +76,18 @@ class ICollector(metaclass=abc.ABCMeta):
     def values(self) -> Any:
         """get result"""
 
+    @abc.abstractmethod
+    def merge(self, other: "ICollector") -> None:
+        """merge another collector's values into this one"""
+
 
 class Collector(ICollector):
-    def __init__(self, alias: str, flat: bool=False):
+    def __init__(self, alias: str, flat: bool = False, merge_mode: MergeMode = MergeMode.CONCAT):
         super().__init__(alias)
         self.flat = flat
+        self.merge_mode = merge_mode
         self.val = []
+        self._source_collectors: list["Collector"] = []
 
     def add(self, val: Any | list[Any]) -> None:
         if self.flat:
@@ -75,4 +99,53 @@ class Collector(ICollector):
             self.val.append(val)
 
     def values(self) -> list[Any]:
-        return self.val
+        if not self._source_collectors:
+            return self.val
+        return self._apply_merge()
+
+    def merge(self, other: "Collector") -> None:
+        self._source_collectors.append(other)
+
+    def _apply_merge(self) -> list[Any]:
+        all_collectors = [self] + self._source_collectors
+        all_values = [c.val for c in all_collectors]
+
+        if self.merge_mode == MergeMode.CONCAT:
+            result = []
+            for vals in all_values:
+                result.extend(vals)
+            return result
+
+        elif self.merge_mode == MergeMode.UNION:
+            seen = set()
+            result = []
+            for vals in all_values:
+                for v in vals:
+                    try:
+                        if v not in seen:
+                            seen.add(v)
+                            result.append(v)
+                    except TypeError:
+                        if v not in result:
+                            result.append(v)
+            return result
+
+        elif self.merge_mode == MergeMode.INTERSECT:
+            if not all_values:
+                return []
+            result = list(all_values[0])
+            for vals in all_values[1:]:
+                result = [v for v in result if v in vals]
+            return result
+
+        elif self.merge_mode == MergeMode.FIRST:
+            return list(all_values[0]) if all_values else []
+
+        elif self.merge_mode == MergeMode.LAST:
+            return list(all_values[-1]) if all_values else []
+
+        else:
+            result = []
+            for vals in all_values:
+                result.extend(vals)
+            return result

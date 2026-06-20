@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from typing import Iterator, Any, Callable, Optional
+from typing import Iterator, Any, Callable, Optional, get_type_hints
 from pydantic import BaseModel, model_validator, Field
 import logging
 import importlib
 import functools
 import weakref
+import html
 import pydantic_resolve.constant as const
 from pydantic_resolve.utils import class_util, types
 from pydantic_resolve.utils.depend import Loader
@@ -65,11 +66,40 @@ class Relationship(BaseModel):
             )
         return self
 
+
+class FieldMapping(BaseModel):
+    """Declares a pure field mapping between two entities.
+
+    When two entities have fields with the same name (or explicitly mapped),
+    the loader result for that field is automatically reused, avoiding
+    duplicate requests.
+
+    Attributes:
+        source_field: Field name on the source entity
+        target_entity: Target entity class
+        target_field: Field name on the target entity (defaults to source_field)
+        description: Optional description for documentation
+    """
+    source_field: str
+    target_entity: Any
+    target_field: str | None = None
+    description: str | None = None
+
+    @model_validator(mode="after")
+    def _set_default_target_field(self) -> "FieldMapping":
+        if self.target_field is None:
+            self.target_field = self.source_field
+        return self
+
+
 class Entity(BaseModel):
     kls: type[BaseModel]
     relationships: list[Relationship] = Field(default_factory=list)
+    field_mappings: list[FieldMapping] = Field(default_factory=list)
     queries: list[QueryConfig] = Field(default_factory=list)
     mutations: list[MutationConfig] = Field(default_factory=list)
+
+    model_config = {"arbitrary_types_allowed": True}
 
     @model_validator(mode="after")
     def _validate_relationships(self) -> "Entity":
@@ -348,6 +378,198 @@ class ErDiagram(BaseModel):
                 merged_configs.append(incoming)
 
         return ErDiagram(entities=merged_configs, description=self.description)
+
+    def get_implicit_field_mappings(self) -> list[FieldMapping]:
+        """Auto-detect implicit field mappings between entities with same field names.
+
+        When two entities have fields with the same name, the loader result for
+        that field is automatically reused. This method finds all such cases.
+
+        Returns:
+            List of FieldMapping objects representing implicit mappings.
+        """
+        entity_fields: dict[type, dict[str, Any]] = {}
+        for entity in self.entities:
+            try:
+                hints = get_type_hints(entity.kls)
+                entity_fields[entity.kls] = hints
+            except Exception:
+                continue
+
+        implicit_mappings: list[FieldMapping] = []
+        entities_list = list(self.entities)
+
+        for i, source_entity in enumerate(entities_list):
+            source_fields = entity_fields.get(source_entity.kls, {})
+            for target_entity in entities_list[i + 1:]:
+                target_fields = entity_fields.get(target_entity.kls, {})
+                common_fields = set(source_fields.keys()) & set(target_fields.keys())
+
+                for field_name in common_fields:
+                    if field_name.startswith('__'):
+                        continue
+                    implicit_mappings.append(FieldMapping(
+                        source_field=field_name,
+                        target_entity=target_entity.kls,
+                        target_field=field_name,
+                        description=f"Implicit mapping for same field name '{field_name}'"
+                    ))
+
+        return implicit_mappings
+
+    def get_all_field_mappings(self) -> list[FieldMapping]:
+        """Get all field mappings (explicit + implicit).
+
+        Returns:
+            Combined list of explicit and implicit field mappings.
+        """
+        all_mappings: list[FieldMapping] = []
+
+        for entity in self.entities:
+            for mapping in entity.field_mappings:
+                all_mappings.append(mapping)
+
+        all_mappings.extend(self.get_implicit_field_mappings())
+        return all_mappings
+
+    def _get_field_type_signature(self, kls: type, field_name: str) -> str:
+        """Get the type signature string for a field on a class."""
+        try:
+            hints = get_type_hints(kls)
+            field_type = hints.get(field_name)
+            if field_type is None:
+                return "Any"
+            if hasattr(field_type, '__name__'):
+                return field_type.__name__
+            return str(field_type)
+        except Exception:
+            return "Any"
+
+    def to_mermaid(self, include_field_mappings: bool = True) -> str:
+        """Render ER diagram as Mermaid syntax.
+
+        Field mappings are shown as dashed arrows with hover tooltips
+        showing source and target field type signatures.
+
+        Args:
+            include_field_mappings: Whether to include field mapping arrows.
+
+        Returns:
+            Mermaid ER diagram string.
+        """
+        lines = ["erDiagram"]
+
+        entity_kls_to_name = {e.kls: e.kls.__name__ for e in self.entities}
+
+        for entity in self.entities:
+            entity_name = entity.kls.__name__
+            lines.append(f"    {entity_name} {{")
+            try:
+                hints = get_type_hints(entity.kls)
+                for field_name, field_type in hints.items():
+                    if field_name.startswith('__'):
+                        continue
+                    type_str = self._get_field_type_signature(entity.kls, field_name)
+                    lines.append(f"        {type_str} {field_name}")
+            except Exception:
+                pass
+            lines.append("    }")
+
+        for entity in self.entities:
+            source_name = entity.kls.__name__
+            for rel in entity.relationships:
+                target_name = rel.target.__name__ if hasattr(rel.target, '__name__') else str(rel.target)
+                if types._is_list(rel.target):
+                    rel_type = "||--o{"
+                else:
+                    rel_type = "||--||"
+                if rel.description:
+                    lines.append(f'    {source_name} {rel_type} {target_name} : "{rel.description}"')
+                else:
+                    lines.append(f'    {source_name} {rel_type} {target_name} : "{rel.name}"')
+
+        if include_field_mappings:
+            seen_mappings = set()
+            for mapping in self.get_all_field_mappings():
+                source_name = None
+                for entity in self.entities:
+                    if mapping.source_field in [f.name for f in getattr(entity.kls, 'model_fields', {}).values()]:
+                        source_name = entity.kls.__name__
+                        break
+                if source_name is None:
+                    continue
+
+                target_kls = mapping.target_entity
+                target_name = entity_kls_to_name.get(target_kls, target_kls.__name__ if hasattr(target_kls, '__name__') else str(target_kls))
+
+                mapping_key = (source_name, mapping.source_field, target_name, mapping.target_field)
+                reverse_key = (target_name, mapping.target_field, source_name, mapping.source_field)
+                if mapping_key in seen_mappings or reverse_key in seen_mappings:
+                    continue
+                seen_mappings.add(mapping_key)
+
+                source_type = self._get_field_type_signature(entity.kls, mapping.source_field)
+                target_type = self._get_field_type_signature(target_kls, mapping.target_field or mapping.source_field)
+
+                tooltip = f"{source_name}.{mapping.source_field}: {source_type} → {target_name}.{mapping.target_field}: {target_type}"
+                safe_tooltip = html.escape(tooltip, quote=True)
+
+                lines.append(f'    {source_name} ..> {target_name} : "{safe_tooltip}"')
+
+        return "\n".join(lines)
+
+    def to_html(self, include_field_mappings: bool = True) -> str:
+        """Render ER diagram as interactive HTML with hover tooltips.
+
+        Field mappings are shown as dashed arrows. Hovering shows source
+        and target field type signatures.
+
+        Args:
+            include_field_mappings: Whether to include field mapping arrows.
+
+        Returns:
+            HTML string with interactive diagram.
+        """
+        mermaid_code = self.to_mermaid(include_field_mappings=include_field_mappings)
+
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>ER Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        .mermaid {{
+            text-align: center;
+            margin: 20px;
+        }}
+        .edgePath.field-mapping path {{
+            stroke-dasharray: 5,5;
+        }}
+        .edgeLabel.field-mapping {{
+            display: none;
+        }}
+        .edgePath.field-mapping:hover + .edgeLabel.field-mapping {{
+            display: block;
+            background: #fff;
+            border: 1px solid #ccc;
+            padding: 4px 8px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+    </style>
+</head>
+<body>
+    <div class="mermaid">
+{mermaid_code}
+    </div>
+    <script>
+        mermaid.initialize({{ startOnLoad: true, securityLevel: 'loose' }});
+    </script>
+</body>
+</html>"""
+
+        return html_content
 
 
 class BaseEntity:  # just type (TODO: optimize)
