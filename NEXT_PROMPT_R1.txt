@@ -1,0 +1,1 @@
+Collector 多个平行分支向上合并时数据翻倍了，同一份值重复出现。还有 ER 图渲染 field mapping 虚线箭头会直接抛异常断掉——调 to_mermaid 带 field mappings 就崩。检查修复一下。
