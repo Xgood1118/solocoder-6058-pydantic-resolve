@@ -804,7 +804,6 @@ def _clone_collector(collector):
     if hasattr(collector, 'merge_mode'):
         new.merge_mode = collector.merge_mode
     new.val = []
-    new._source_collectors = []
     return new
 
 

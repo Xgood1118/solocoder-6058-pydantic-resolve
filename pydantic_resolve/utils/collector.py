@@ -87,7 +87,6 @@ class Collector(ICollector):
         self.flat = flat
         self.merge_mode = merge_mode
         self.val = []
-        self._source_collectors: list["Collector"] = []
 
     def add(self, val: Any | list[Any]) -> None:
         if self.flat:
@@ -99,53 +98,56 @@ class Collector(ICollector):
             self.val.append(val)
 
     def values(self) -> list[Any]:
-        if not self._source_collectors:
-            return self.val
-        return self._apply_merge()
+        return self.val
 
     def merge(self, other: "Collector") -> None:
-        self._source_collectors.append(other)
+        """Merge another collector's values into this one according to merge_mode.
 
-    def _apply_merge(self) -> list[Any]:
-        all_collectors = [self] + self._source_collectors
-        all_values = [c.val for c in all_collectors]
+        Values from ``other`` are merged into ``self.val`` directly, not stored
+        as source references, to avoid double-counting when the parent collector
+        already received values via the ancestor_collectors path.
+        """
+        if not other.val:
+            return
+        self.val = self._apply_merge(self.val, other.val)
 
+    def _apply_merge(self, current: list[Any], incoming: list[Any]) -> list[Any]:
         if self.merge_mode == MergeMode.CONCAT:
-            result = []
-            for vals in all_values:
-                result.extend(vals)
+            result = list(current)
+            result.extend(incoming)
             return result
 
         elif self.merge_mode == MergeMode.UNION:
             seen = set()
             result = []
-            for vals in all_values:
-                for v in vals:
-                    try:
-                        if v not in seen:
-                            seen.add(v)
-                            result.append(v)
-                    except TypeError:
-                        if v not in result:
-                            result.append(v)
+            for v in current:
+                try:
+                    if v not in seen:
+                        seen.add(v)
+                        result.append(v)
+                except TypeError:
+                    if v not in result:
+                        result.append(v)
+            for v in incoming:
+                try:
+                    if v not in seen:
+                        seen.add(v)
+                        result.append(v)
+                except TypeError:
+                    if v not in result:
+                        result.append(v)
             return result
 
         elif self.merge_mode == MergeMode.INTERSECT:
-            if not all_values:
-                return []
-            result = list(all_values[0])
-            for vals in all_values[1:]:
-                result = [v for v in result if v in vals]
-            return result
+            return [v for v in current if v in incoming]
 
         elif self.merge_mode == MergeMode.FIRST:
-            return list(all_values[0]) if all_values else []
+            return list(current)
 
         elif self.merge_mode == MergeMode.LAST:
-            return list(all_values[-1]) if all_values else []
+            return list(incoming)
 
         else:
-            result = []
-            for vals in all_values:
-                result.extend(vals)
+            result = list(current)
+            result.extend(incoming)
             return result

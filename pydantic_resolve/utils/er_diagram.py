@@ -492,15 +492,21 @@ class ErDiagram(BaseModel):
             seen_mappings = set()
             for mapping in self.get_all_field_mappings():
                 source_name = None
+                source_entity = None
                 for entity in self.entities:
-                    if mapping.source_field in [f.name for f in getattr(entity.kls, 'model_fields', {}).values()]:
+                    model_fields = getattr(entity.kls, 'model_fields', {})
+                    if mapping.source_field in model_fields:
                         source_name = entity.kls.__name__
+                        source_entity = entity
                         break
-                if source_name is None:
+                if source_name is None or source_entity is None:
                     continue
 
                 target_kls = mapping.target_entity
-                target_name = entity_kls_to_name.get(target_kls, target_kls.__name__ if hasattr(target_kls, '__name__') else str(target_kls))
+                target_name = entity_kls_to_name.get(
+                    target_kls,
+                    target_kls.__name__ if hasattr(target_kls, '__name__') else str(target_kls)
+                )
 
                 mapping_key = (source_name, mapping.source_field, target_name, mapping.target_field)
                 reverse_key = (target_name, mapping.target_field, source_name, mapping.source_field)
@@ -508,13 +514,13 @@ class ErDiagram(BaseModel):
                     continue
                 seen_mappings.add(mapping_key)
 
-                source_type = self._get_field_type_signature(entity.kls, mapping.source_field)
+                source_type = self._get_field_type_signature(source_entity.kls, mapping.source_field)
                 target_type = self._get_field_type_signature(target_kls, mapping.target_field or mapping.source_field)
 
-                tooltip = f"{source_name}.{mapping.source_field}: {source_type} → {target_name}.{mapping.target_field}: {target_type}"
+                tooltip = f"[FieldMapping] {source_name}.{mapping.source_field}: {source_type} → {target_name}.{mapping.target_field}: {target_type}"
                 safe_tooltip = html.escape(tooltip, quote=True)
 
-                lines.append(f'    {source_name} ..> {target_name} : "{safe_tooltip}"')
+                lines.append(f'    {source_name} ||..|| {target_name} : "{safe_tooltip}"')
 
         return "\n".join(lines)
 
